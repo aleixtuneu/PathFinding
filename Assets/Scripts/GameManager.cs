@@ -9,49 +9,59 @@ public class GameManager : MonoBehaviour
     public int Size;
     public BoxCollider2D Panel;
     public GameObject token;
-    //private int[,] GameMatrix; //0 not chosen, 1 player, 2 enemy de momento no hago nada con esto
+
     private Node[,] NodeMatrix;
     private int startPosx, startPosy;
     private int endPosx, endPosy;
+    private PathFinder pathFinder;
+    private Dictionary<Node, GameObject> nodeVisuals = new Dictionary<Node, GameObject>();
+
     void Awake()
     {
         Instance = this;
-        //GameMatrix = new int[Size, Size];
         Calculs.CalculateDistances(Panel, Size);
     }
+
     private void Start()
     {
-        /*for(int i = 0; i<Size; i++)
-        {
-            for (int j = 0; j< Size; j++)
-            {
-                GameMatrix[i, j] = 0;
-            }
-        }*/
-        
         startPosx = Random.Range(0, Size);
         startPosy = Random.Range(0, Size);
         do
         {
             endPosx = Random.Range(0, Size);
             endPosy = Random.Range(0, Size);
-        } while(endPosx== startPosx || endPosy== startPosy);
+        } while (endPosx == startPosx || endPosy == startPosy);
 
-        //GameMatrix[startPosx, startPosy] = 2;
-        //GameMatrix[startPosx, startPosy] = 1;
         NodeMatrix = new Node[Size, Size];
         CreateNodes();
+
+        // Crear PathFinder
+        pathFinder = gameObject.AddComponent<PathFinder>();
+
+        // Iniciar el pathfinding després d'un frame
+        StartCoroutine(StartPathfinding());
     }
+
+    private IEnumerator StartPathfinding()
+    {
+        yield return new WaitForSeconds(0.5f);
+        yield return StartCoroutine(pathFinder.FindPathAStar(
+            NodeMatrix[startPosx, startPosy],
+            NodeMatrix[endPosx, endPosy]
+        ));
+    }
+
     public void CreateNodes()
     {
-        for(int i=0; i<Size; i++)
+        for (int i = 0; i < Size; i++)
         {
-            for(int j=0; j<Size; j++)
+            for (int j = 0; j < Size; j++)
             {
-                NodeMatrix[i, j] = new Node(i, j, Calculs.CalculatePoint(i,j));
-                NodeMatrix[i,j].Heuristic = Calculs.CalculateHeuristic(NodeMatrix[i,j],endPosx,endPosy);
+                NodeMatrix[i, j] = new Node(i, j, Calculs.CalculatePoint(i, j));
+                NodeMatrix[i, j].Heuristic = Calculs.CalculateHeuristic(NodeMatrix[i, j], endPosx, endPosy);
             }
         }
+
         for (int i = 0; i < Size; i++)
         {
             for (int j = 0; j < Size; j++)
@@ -59,30 +69,37 @@ public class GameManager : MonoBehaviour
                 SetWays(NodeMatrix[i, j], i, j);
             }
         }
+
         DebugMatrix();
     }
+
     public void DebugMatrix()
     {
         for (int i = 0; i < Size; i++)
         {
             for (int j = 0; j < Size; j++)
             {
-                Instantiate(token, NodeMatrix[i, j].RealPosition, Quaternion.identity);
-                Debug.Log("Element (" + j + ", " + i + ")");
-                Debug.Log("Position " + NodeMatrix[i, j].RealPosition);
-                Debug.Log("Heuristic " + NodeMatrix[i, j].Heuristic);
-                Debug.Log("Ways: ");
-                foreach (var way in NodeMatrix[i, j].WayList)
+                GameObject tokenInstance = Instantiate(token, NodeMatrix[i, j].RealPosition, Quaternion.identity);
+                NodeMatrix[i, j].Visual = tokenInstance;
+                nodeVisuals[NodeMatrix[i, j]] = tokenInstance;
+
+                // Marcar inici i final amb colors especials
+                if (i == startPosx && j == startPosy)
                 {
-                    Debug.Log(" (" + way.NodeDestiny.PositionX + ", " + way.NodeDestiny.PositionY + ")");
+                    tokenInstance.GetComponent<SpriteRenderer>().color = Color.blue; // Blau per inici
+                }
+                else if (i == endPosx && j == endPosy)
+                {
+                    tokenInstance.GetComponent<SpriteRenderer>().color = Color.magenta; // Magent per al final
                 }
             }
         }
     }
+
     public void SetWays(Node node, int x, int y)
     {
         node.WayList = new List<Way>();
-        if (x>0)
+        if (x > 0)
         {
             node.WayList.Add(new Way(NodeMatrix[x - 1, y], Calculs.LinearDistance));
             if (y > 0)
@@ -90,7 +107,7 @@ public class GameManager : MonoBehaviour
                 node.WayList.Add(new Way(NodeMatrix[x - 1, y - 1], Calculs.DiagonalDistance));
             }
         }
-        if(x<Size-1)
+        if (x < Size - 1)
         {
             node.WayList.Add(new Way(NodeMatrix[x + 1, y], Calculs.LinearDistance));
             if (y > 0)
@@ -98,22 +115,40 @@ public class GameManager : MonoBehaviour
                 node.WayList.Add(new Way(NodeMatrix[x + 1, y - 1], Calculs.DiagonalDistance));
             }
         }
-        if(y>0)
+        if (y > 0)
         {
             node.WayList.Add(new Way(NodeMatrix[x, y - 1], Calculs.LinearDistance));
         }
-        if (y<Size-1)
+        if (y < Size - 1)
         {
             node.WayList.Add(new Way(NodeMatrix[x, y + 1], Calculs.LinearDistance));
-            if (x>0)
+            if (x > 0)
             {
                 node.WayList.Add(new Way(NodeMatrix[x - 1, y + 1], Calculs.DiagonalDistance));
             }
-            if (x<Size-1)
+            if (x < Size - 1)
             {
                 node.WayList.Add(new Way(NodeMatrix[x + 1, y + 1], Calculs.DiagonalDistance));
             }
         }
     }
 
+    public void ChangeNodeColor(Node node, Color color)
+    {
+        if (nodeVisuals.ContainsKey(node) && nodeVisuals[node] != null)
+        {
+            SpriteRenderer spriteRenderer = nodeVisuals[node].GetComponent<SpriteRenderer>();
+            if (spriteRenderer != null)
+            {
+                spriteRenderer.color = color;
+            }
+        }
+    }
+
+    public Node GetNodeAt(int x, int y)
+    {
+        if (x >= 0 && x < Size && y >= 0 && y < Size)
+            return NodeMatrix[x, y];
+        return null;
+    }
 }
